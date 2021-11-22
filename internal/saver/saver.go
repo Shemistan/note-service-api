@@ -16,41 +16,43 @@ type Saver interface {
 }
 
 type saver struct {
-	capacity        int64
-	bachSize        int64
-	flusher         flusher.Flusher
-	alarmer         alarmer.Alarmer
-	notes           []api.Note
-	notesChan       chan api.Note
-	end             chan struct{}
-	lossAllData     bool
-	initInitialized bool
+	capacity    int64
+	batchSize   int64
+	flusher     flusher.Flusher
+	alarmer     alarmer.Alarmer
+	notes       []api.Note
+	notesChan   chan api.Note
+	end         chan struct{}
+	lossAllData bool
+	initInit    bool
 }
 
-func NewSaver(capacity, bachSize int64, flusher flusher.Flusher, alarmer alarmer.Alarmer, lossAllData bool) Saver {
-	return &saver{
-		capacity:        capacity,
-		bachSize:        bachSize,
-		flusher:         flusher,
-		alarmer:         alarmer,
-		lossAllData:     lossAllData,
-		notes:           make([]api.Note, 0),
-		notesChan:       make(chan api.Note),
-		end:             make(chan struct{}),
-		initInitialized: false,
+func NewSaver(capacity, batchSize int64, flusher flusher.Flusher, alarmer alarmer.Alarmer, lossAllData bool) (Saver, error) {
+	if capacity <= 0 {
+		return nil, errors.New("failed to capacity value")
 	}
+
+	if batchSize <= 0 {
+		return nil, errors.New("failed to batch size value")
+	}
+
+	return &saver{
+		capacity:    capacity,
+		batchSize:   batchSize,
+		flusher:     flusher,
+		alarmer:     alarmer,
+		lossAllData: lossAllData,
+		notes:       []api.Note{},
+		notesChan:   make(chan api.Note),
+		end:         make(chan struct{}),
+		initInit:    false,
+	}, nil
 }
 
 func (s *saver) Init() error {
-	if s.initInitialized {
-		return errors.New("failed to repeated initialized saver")
+	if s.initInit {
+		return errors.New("the saver has already been initialized")
 	}
-	err := s.alarmer.Init()
-	if err != nil {
-		return err
-	}
-
-	s.initInitialized = true
 
 	go func() {
 		for {
@@ -67,13 +69,16 @@ func (s *saver) Init() error {
 		}
 	}()
 
+	s.initInit = true
+
 	return nil
 }
 
 func (s *saver) Save(note api.Note) error {
-	if !s.initInitialized {
+	if !s.initInit {
 		return errors.New("failed to initialized saver")
 	}
+
 	s.notesChan <- note
 
 	return nil
@@ -86,7 +91,6 @@ func (s *saver) Close() {
 	s.alarmer.Close()
 	close(s.notesChan)
 	close(s.end)
-
 }
 
 func (s *saver) saveToBuffer(note api.Note) {
@@ -96,8 +100,8 @@ func (s *saver) saveToBuffer(note api.Note) {
 		} else {
 			s.notes = s.notes[1:]
 		}
-
 	}
+
 	s.notes = append(s.notes, note)
 }
 
@@ -105,10 +109,11 @@ func (s *saver) flushData() {
 	if len(s.notes) <= 0 {
 		return
 	}
-	res, err := s.flusher.Flush(s.notes, s.bachSize)
 
+	res, err := s.flusher.Flush(s.notes, s.batchSize)
 	if err != nil {
 		log.Printf("failed to flushed data %s", err.Error())
 	}
+
 	s.notes = s.notes[:copy(s.notes, res)]
 }
