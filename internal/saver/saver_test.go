@@ -1,15 +1,16 @@
 package saver
 
 import (
+	"log"
+	"testing"
+	"time"
+
 	"github.com/Shemistan/note-service-api/internal/alarmer"
 	"github.com/Shemistan/note-service-api/internal/app/api"
 	"github.com/Shemistan/note-service-api/internal/flusher"
 	mocksRepo "github.com/Shemistan/note-service-api/internal/repo/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"log"
-	"testing"
-	"time"
 )
 
 func TestSaver(t *testing.T) {
